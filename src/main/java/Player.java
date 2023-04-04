@@ -54,21 +54,76 @@ public class Player {
     private boolean botao_pause = true;
     private boolean botao_pause_press = true;
     private boolean stop_press = false;
+    private boolean musica_rodando = true;
+    private int tempo_atual;
+    private int currentFrame;
+
+    public void jumpSong(){
+        try {
+            //Recriando o device, decoder e bitstream, para possibilitar
+            //Voltar para um ponto da música
+
+            currentFrame = 0;
+            device = FactoryRegistry.systemRegistry().createAudioDevice();
+            device.open(decoder = new Decoder());
+            bitstream = new Bitstream(musica_atual.getBufferedInputStream());
+
+        } catch (JavaLayerException | FileNotFoundException ex) {
+            throw new RuntimeException(ex);
+        }
+
+        tempo_atual = (int) (tela.getScrubberValue() / musica_atual.getMsPerFrame());
+        tela.setTime((int) (tempo_atual * (int) musica_atual.getMsPerFrame()), (int) musica_atual.getMsLength());
+        //Pulando para os Bits que foram "Escolhidos" ao alterar o Scrubber
+        try {
+            skipToFrame(tempo_atual);
+        } catch (BitstreamException e) {
+            throw new RuntimeException(e);
+        }
+
+        if(currentFrame != 0 && botao_pause){
+            botao_pause_press = true;
+        }
+        PlayMusic(2);
+    }
+
+    private void skipToFrame(int newFrame) throws BitstreamException {
+        if (newFrame > currentFrame) {
+            int framesToSkip = newFrame - currentFrame;
+            boolean condition = true;
+            while (framesToSkip-- > 0 && condition) condition = skipNextFrame();
+        }
+    }
+
+    private boolean skipNextFrame() throws BitstreamException {
+        Header h = bitstream.readFrame();
+        if (h == null) return false;
+        bitstream.closeFrame();
+        currentFrame++;
+        return true;
+    }
+
+    public void press(){
+        botao_pause_press = false;
+    }
 
 
 //funcao para dar stop na musica
-private void stop(){
-    botao_pause_press = false;
-    tela.setEnabledStopButton(false);
-    tela.resetMiniPlayer();
-}
+    private void stop(){
+        botao_pause_press = false;
+        tela.setEnabledStopButton(false);
+        tela.resetMiniPlayer();
+    }
 
-    private int currentFrame = 0;
-
-    private final ActionListener buttonListenerPlayNow = e->{
-
+    private void PlayMusic(int controle){
         currentFrame = 0;
         index = tela.GetIndex();
+        if(controle == 0){
+            index++;
+        }
+        if(controle == 1){
+            index--;
+        }
         musica_atual = musicas.get(index);
         botao_pause_press = true;
 
@@ -77,43 +132,53 @@ private void stop(){
             public Object doInBackground() throws Exception {
                 tela.setPlayingSongInfo(musica_atual.getTitle(), musica_atual.getAlbum(), musica_atual.getArtist());
 
-            if(bitstream != null){
-                try{
-                    bitstream.close();
-                } catch (BitstreamException ex) {
-                    throw new RuntimeException(ex);
+                if(bitstream != null){
+                    try{
+                        bitstream.close();
+                    } catch (BitstreamException ex) {
+                        throw new RuntimeException(ex);
+                    }
+
+                    device.close();
                 }
 
-                device.close();
-            }
-
-            try {
-                device = FactoryRegistry.systemRegistry().createAudioDevice();
-                device.open(decoder = new Decoder());
-                bitstream = new Bitstream(musica_atual.getBufferedInputStream());
-            } catch (JavaLayerException | FileNotFoundException ex){
-                throw new RuntimeException(ex);
-            }
-
-            while(true){
-                if(botao_pause_press){
-                    try{
-                        tela.setTime((int) (currentFrame * (int) musica_atual.getMsPerFrame()), (int) musica_atual.getMsLength());
-                        tela.setPlayPauseButtonIcon(1);
-                        tela.setEnabledPlayPauseButton(true);
-                        tela.setEnabledStopButton(true);
-                        botao_pause_press = true;
-                        stop_press = true;
-
-                        playNextFrame();
-                    } catch (JavaLayerException ex){
-                        throw new RuntimeException();
+                try {
+                    device = FactoryRegistry.systemRegistry().createAudioDevice();
+                    device.open(decoder = new Decoder());
+                    bitstream = new Bitstream(musica_atual.getBufferedInputStream());
+                } catch (JavaLayerException | FileNotFoundException ex){
+                    throw new RuntimeException(ex);
+                }
+                if(controle == 2){
+                    tempo_atual = (int) (tela.getScrubberValue() / musica_atual.getMsPerFrame());
+                    tela.setTime((int) (tempo_atual * (int) musica_atual.getMsPerFrame()), (int) musica_atual.getMsLength());
+                }
+                while(true){
+                    if(botao_pause_press){
+                        try{
+                            tela.setTime((int) (currentFrame * (int) musica_atual.getMsPerFrame()), (int) musica_atual.getMsLength());
+                            tela.setPlayPauseButtonIcon(1);
+                            tela.setEnabledPlayPauseButton(true);
+                            tela.setEnabledStopButton(true);
+                            tela.setEnabledPreviousButton(true);
+                            tela.setEnabledNextButton(true);
+                            tela.setEnabledScrubber(true);
+                            botao_pause_press = true;
+                            stop_press = true;
+                            playNextFrame();
+                        } catch (JavaLayerException ex){
+                            throw new RuntimeException();
+                        }
                     }
                 }
             }
-            }
         };
         executavel.execute();
+    }
+
+
+    private final ActionListener buttonListenerPlayNow = e->{
+        PlayMusic(10);
     };
     private final ActionListener buttonListenerRemove = e -> {
         index = tela.GetIndex();
@@ -162,17 +227,42 @@ private void stop(){
             stop();
         }
     };
-    private final ActionListener buttonListenerNext = e -> {};
-    private final ActionListener buttonListenerPrevious = e -> {};
+    private final ActionListener buttonListenerNext = e -> {
+        if(index + 1 < musica_temp.size()){
+            if(!botao_pause_press){
+                stop();
+                botao_pause_press = true;
+                botao_pause = true;
+                tela.setPlayPauseButtonIcon(1);
+            }
+
+            PlayMusic(0);
+        }
+    };
+
+    private final ActionListener buttonListenerPrevious = e -> {
+        if(index - 1 >= 0){
+            if(!botao_pause_press){
+                stop();
+                botao_pause_press = true;
+                botao_pause = true;
+                tela.setPlayPauseButtonIcon(1);
+            }
+
+            PlayMusic(1);
+        }
+    };
     private final ActionListener buttonListenerShuffle = e -> {};
     private final ActionListener buttonListenerLoop = e -> {};
     private final MouseInputAdapter scrubberMouseInputAdapter = new MouseInputAdapter() {
         @Override
         public void mouseReleased(MouseEvent e) {
+            jumpSong();
         }
 
         @Override
         public void mousePressed(MouseEvent e) {
+            press();
         }
 
         @Override
@@ -219,14 +309,6 @@ private void stop(){
     /**
      * @return False if there are no more frames to skip.
      */
-    private boolean skipNextFrame() throws BitstreamException {
-        // TODO: Is this thread safe?
-        Header h = bitstream.readFrame();
-        if (h == null) return false;
-        bitstream.closeFrame();
-        currentFrame++;
-        return true;
-    }
 
     /**
      * Skips bitstream to the target frame if the new frame is higher than the current one.
@@ -234,13 +316,5 @@ private void stop(){
      * @param newFrame Frame to skip to.
      * @throws BitstreamException Generic Bitstream exception.
      */
-    private void skipToFrame(int newFrame) throws BitstreamException {
-        // TODO: Is this thread safe?
-        if (newFrame > currentFrame) {
-            int framesToSkip = newFrame - currentFrame;
-            boolean condition = true;
-            while (framesToSkip-- > 0 && condition) condition = skipNextFrame();
-        }
-    }
     //</editor-fold>
 }
