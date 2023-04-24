@@ -54,9 +54,11 @@ public class Player {
     private boolean botao_pause = true;
     private boolean botao_pause_press = true;
     private boolean stop_press = false;
-    private boolean musica_rodando = true;
+    private boolean musica_rodando = false;
+    private boolean loop = false;
     private int tempo_atual;
     private int currentFrame;
+    private boolean tilt = true;
 
     public void jumpSong(){
         try {
@@ -154,6 +156,7 @@ public class Player {
                     tela.setTime((int) (tempo_atual * (int) musica_atual.getMsPerFrame()), (int) musica_atual.getMsLength());
                 }
                 while(true){
+                    musica_rodando = true;
                     if(botao_pause_press){
                         try{
                             tela.setTime((int) (currentFrame * (int) musica_atual.getMsPerFrame()), (int) musica_atual.getMsLength());
@@ -163,6 +166,7 @@ public class Player {
                             tela.setEnabledPreviousButton(true);
                             tela.setEnabledNextButton(true);
                             tela.setEnabledScrubber(true);
+                            tela.setEnabledLoopButton(true);
                             botao_pause_press = true;
                             stop_press = true;
                             playNextFrame();
@@ -173,7 +177,15 @@ public class Player {
                 }
             }
         };
+        musica_rodando = false;
+        if(!musica_rodando && loop){
+            loop = false;
+            tela.setEnabledLoopButton(false);
+            index = 0;
+            PlayMusic(10);
+        }
         executavel.execute();
+
     }
 
 
@@ -253,7 +265,11 @@ public class Player {
         }
     };
     private final ActionListener buttonListenerShuffle = e -> {};
-    private final ActionListener buttonListenerLoop = e -> {};
+    private final ActionListener buttonListenerLoop = e -> {
+        loop = true;
+        tela.setEnabledLoopButton(true);
+    };
+
     private final MouseInputAdapter scrubberMouseInputAdapter = new MouseInputAdapter() {
         @Override
         public void mouseReleased(MouseEvent e) {
